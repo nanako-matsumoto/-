@@ -1,0 +1,330 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8" />
+    <title>落ちモノパズル</title>
+    <style>
+        body {
+            background: #ddf5ff;
+        }
+        #container {
+            margin: 0 auto;
+        }
+    </style>
+</head>
+<body onload="init()">
+    <div id="container">
+        <canvas id="cvs"></canvas>
+    </div>
+    <script>
+        const speed = 500;
+        const blockSize = 30;
+        const boardRow = 20;
+        const boardCol = 10;
+        const cvs = document.getElementById('cvs');
+        const ctx = cvs.getContext('2d');
+        const canvasW = blockSize * boardCol;
+        const canvasH = blockSize * boardRow;
+        cvs.width = canvasW;
+        cvs.height = canvasH;
+        const container = document.getElementById('container');
+        container.style.width = canvasW + 'px';
+        const minoSize = 10; // グレーのミノのサイズを設定
+        const normalMinoTypes = [
+            [],
+            [
+                [0, 0, 0, 0],
+                [0, 1, 0, 0],
+                [1, 1, 1, 0],
+                [0, 0, 0, 0],
+            ],
+            [
+                [0, 0, 0, 0],
+                [0, 1, 1, 0],
+                [0, 1, 1, 0],
+                [0, 0, 0, 0],
+            ],
+            [
+                [0, 0, 0, 0],
+                [1, 1, 0, 0],
+                [0, 1, 1, 0],
+                [0, 0, 0, 0],
+            ],
+            [
+                [0, 0, 0, 0],
+                [0, 0, 1, 1],
+                [0, 1, 1, 0],
+                [0, 0, 0, 0],
+            ],
+            [
+                [0, 0, 0, 0],
+                [1, 1, 1, 1],
+                [0, 0, 0, 0],
+                [0, 0, 0, 0],
+            ],
+            [
+                [0, 0, 0, 0],
+                [1, 1, 1, 0],
+                [0, 0, 1, 0],
+                [0, 0, 0, 0],
+            ],
+            [
+                [0, 0, 0, 0],
+                [0, 0, 1, 0],
+                [1, 1, 1, 0],
+                [0, 0, 0, 0],
+            ],
+        ];
+        const minoColors = [
+            '',
+            '#e0e040',
+            '#00b3b3',
+            '#4caf50',
+            '#d07ac4',
+            '#c62828',
+            '#3f51b5',
+            '#e65100',
+            '#b0b0b0', 
+        ];
+
+        let mino_idx;
+        let mino;
+        let offsetX = 0;
+        let offsetY = 0;
+        const board = [];
+        let timerID = NaN;
+        let isGameover = false;
+        let dropCount = 0;
+        let delMinoGroups = 0;
+
+        //描画関係
+        const drawBlock = (x, y, mino_idx) => {
+            let px = x * blockSize;
+            let py = y * blockSize;
+            ctx.fillStyle = minoColors[mino_idx];
+            ctx.beginPath();
+            ctx.arc(px + blockSize / 2, py + blockSize / 2, blockSize / 2, 0, 2 * Math.PI);
+            ctx.fill();
+            ctx.strokeStyle = 'black';
+            ctx.stroke();
+        };
+
+        const draw = () => {
+            ctx.fillStyle = '#000';
+            ctx.fillRect(0, 0, canvasW, canvasH);
+            //ボード
+            for (let y = 0; y < boardRow; y++) {
+                for (let x = 0; x < boardCol; x++) {
+                    if (board[y][x]) {
+                        drawBlock(x, y, board[y][x]);
+                    }
+                }
+            }
+            //ミノ
+            for (let y = 0; y < mino.length; y++) {
+                for (let x = 0; x < mino[0].length; x++) {
+                    if (mino[y][x]) {
+                        drawBlock(offsetX + x, offsetY + y, mino_idx);
+                    }
+                }
+            }
+            //ゲームオーバー
+            if (isGameover) {
+                const s = 'GAME OVER';
+                ctx.font = "40px 'MS ゴシック'";
+                const w = ctx.measureText(s).width;
+                const x = canvasW / 2 - w / 2;
+                const y = canvasH / 2 - 20;
+                ctx.fillStyle = 'white';
+                ctx.fillText(s, x, y);
+            }
+            //消えたミノ数
+            ctx.font = "20px 'MS ゴシック' ";
+            ctx.fillStyle = 'white';
+            ctx.fillText("消したミノの塊： " + delMinoGroups, 10, canvasH - 10);
+        };
+
+        //移動
+        const canMove = (dx, dy, nowmino = mino) => {
+            for (let y = 0; y < nowmino.length; y++) {
+                for (let x = 0; x < nowmino[0].length; x++) {
+                    if (nowmino[y][x]) {
+                        let nx = offsetX + x + dx;
+                        let ny = offsetY + y + dy;
+                        if (ny < 0 || nx < 0 || ny >= boardRow || nx >= boardCol || board[ny][nx]) {
+                            return false;
+                        }
+                    }
+                }
+            }
+            return true;
+        };
+
+        const createRotatemino = () => {
+            let newmino = [];
+            for (let y = 0; y < mino[0].length; y++) {
+                newmino[y] = [];
+                for (let x = 0; x < mino.length; x++) {
+                    newmino[y][x] = mino[mino.length - 1 - x][y];
+                }
+            }
+            return newmino;
+        };
+
+        document.onkeydown = (e) => {
+            if (isGameover) return;
+            switch (e.keyCode) {
+                case 37:
+                    if (canMove(-1, 0)) offsetX--;
+                    break;
+                case 38:
+                    if (canMove(0, -1)) offsetY--;
+                    break;
+                case 39:
+                    if (canMove(1, 0)) offsetX++;
+                    break;
+                case 40:
+                    if (canMove(0, 1)) offsetY++;
+                    break;
+                case 32:
+                    let newmino = createRotatemino();
+                    if (canMove(0, 0, newmino)) {
+                        mino = newmino;
+                    }
+            }
+            draw();
+        };
+
+        //ミノの固定・削除
+        const MinoGroup = (x, y, color, visited) => {
+            let group = [];
+            let queue = [[x, y]];
+            while (queue.length > 0) {
+                let [cx, cy] = queue.shift();
+                if (visited[cy][cx] || board[cy][cx] !== color) continue;
+                visited[cy][cx] = true;
+                group.push([cx, cy]);
+                let directions = [[0, 1], [1, 0], [0, -1], [-1, 0]];
+                for (let [dx, dy] of directions) {
+                    let nx = cx + dx;
+                    let ny = cy + dy;
+                    if (nx >= 0 && ny >= 0 && nx < boardCol && ny < boardRow && !visited[ny][nx]) {
+                        queue.push([nx, ny]);
+                    }
+                }
+            }
+            return group;
+        };
+
+        const clearMinos = () => {
+            let visited = Array.from({ length: boardRow }, () => Array(boardCol).fill(false));
+            for (let y = 0; y < boardRow; y++) {
+                for (let x = 0; x < boardCol; x++) {
+                    if (board[y][x] && !visited[y][x] && board[y][x] !== minoColors.length - 1) { // グレーのミノは除外
+                        let group = MinoGroup(x, y, board[y][x], visited);
+                        if (group.length >= 6) {
+                            delMinoGroups++;
+                            for (let [gx, gy] of group) {
+                                board[gy][gx] = 0;
+                            }
+                        }
+                    }
+                }
+            }
+            for (let x = 0; x < boardCol; x++) {
+                for (let y = boardRow - 1; y >= 0; y--) {
+                    if (board[y][x] === 0) {
+                        for (let ny = y - 1; ny >= 0; ny--) {
+                            if (board[ny][x] !== 0) {
+                                board[y][x] = board[ny][x];
+                                board[ny][x] = 0;
+                                break;
+                            }
+                        }
+                    }
+                }
+            }
+        };
+
+        const fixmino = () => {
+            for (let y = 0; y < mino.length; y++) {
+                for (let x = 0; x < mino[0].length; x++) {
+                    if (mino[y][x]) {
+                        board[offsetY + y][offsetX + x] = mino_idx;
+                    }
+                }
+            }
+            clearMinos();
+        };
+
+        const clearLine = () => {
+            for (let y = 0; y < boardRow; y++) {
+                let isFullLine = true;
+                for (let x = 0; x < boardCol; x++) {
+                    if (board[y][x] === 0 || board[y][x] === minoColors.length - 1) {
+                        isFullLine = false;
+                        break;
+                    }
+                }
+                if (isFullLine) {
+                    for (let ny = y; ny > 0; ny--) {
+                        for (let nx = 0; nx < boardCol; nx++) {
+                            board[ny][nx] = board[ny - 1][nx];
+                        }
+                    }
+                    for (let x = 0; x < boardCol; x++) {
+                        board[0][x] = 0;
+                    }
+                }
+            }
+        };
+
+        const dropmino = () => {
+            if (isGameover) return;
+            if (canMove(0, 1)) {
+                offsetY++;
+            } else {
+                fixmino();
+                dropCount++;
+                if (dropCount % 8 === 0) {
+                    mino_idx = minoColors.length - 1; // グレーのミノ
+                    mino = Array.from({ length: 1 }, () => Array(minoSize).fill(1));
+                } else {
+                    mino_idx = randomIdx();
+                    mino = normalMinoTypes[mino_idx];
+                }
+                initStartPos();
+                if (!canMove(0, 0)) {
+                    isGameover = true;
+                    clearInterval(timerID);
+                }
+            }
+            draw();
+        };
+
+        const initStartPos = () => {
+            offsetX = boardCol / 2 - (mino[0].length / 2);
+            offsetY = 0;
+        };
+
+        const randomIdx = () => {
+            return Math.floor(Math.random() * (normalMinoTypes.length - 1)) + 1;
+        };
+
+        const init = () => {
+            for (let y = 0; y < boardRow; y++) {
+                board[y] = [];
+                for (let x = 0; x < boardCol; x++) {
+                    board[y][x] = 0;
+                }
+            }
+            dropCount = 0;
+            mino_idx = randomIdx();
+            mino = normalMinoTypes[mino_idx];
+            initStartPos();
+            timerID = setInterval(dropmino, speed);
+            draw();
+        };
+    </script>
+</body>
+</html>
